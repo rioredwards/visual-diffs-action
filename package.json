@@ -1,0 +1,10 @@
+{
+  "name": "visual-diffs-action",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Crops Playwright visual-test diffs to the changed band and builds a PR comment.",
+  "dependencies": {
+    "sharp": "^0.34.5"
+  }
+}

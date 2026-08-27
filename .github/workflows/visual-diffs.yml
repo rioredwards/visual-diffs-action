@@ -1,0 +1,135 @@
+# Reusable workflow: Playwright visual snapshots → PR image diffs + cropped sticky comment.
+#
+# What it does on every PR run:
+#   1. Compares @visual Playwright screenshots against the committed baselines.
+#   2. Crops each changed region to a before/after/diff strip (crop-diffs.mjs).
+#   3. Regenerates the baselines and commits them to the PR branch (GitHub then
+#      shows native image diffs; the bot push does not re-trigger CI).
+#   4. Publishes the crops to an orphan `visual-diffs` branch and posts/updates
+#      one sticky PR comment. Public repos get inline images; private repos get
+#      links (raw images can't render inline there).
+#
+# Caller contract (see README.md):
+#   permissions: contents: write + pull-requests: write on the calling job.
+#   The repo owns its @visual spec, masks, and snapshotPathTemplate.
+name: visual-diffs
+
+on:
+  workflow_call:
+    inputs:
+      container:
+        description: Playwright container image — must match the repo's Playwright version
+        required: true
+        type: string
+      install-command:
+        description: Installs the repo's dependencies (inline any env vars it needs)
+        required: false
+        type: string
+        default: npm ci
+      test-command:
+        description: Playwright command WITHOUT --update-snapshots/--retries; run twice (compare, then update)
+        required: false
+        type: string
+        default: npx playwright test --grep @visual
+      screenshots-path:
+        description: Glob of committed baselines to commit back to the PR branch
+        required: false
+        type: string
+        default: e2e/__screenshots__/**
+      pad:
+        description: Rows of context to keep around each changed band
+        required: false
+        type: string
+        default: "40"
+      action-ref:
+        description: Ref of visual-diffs-action to fetch crop-diffs.mjs from
+        required: false
+        type: string
+        default: main
+
+jobs:
+  visual:
+    name: Visual snapshots → PR branch
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    runs-on: ubuntu-latest
+    container: ${{ inputs.container }}
+    concurrency:
+      group: visual-diffs-${{ github.repository }}-${{ github.event.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      HUSKY: 0
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      # Checkout inside a container leaves the workspace owned by another uid.
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install dependencies
+        run: ${{ inputs.install-command }}
+
+      - name: Fetch crop tool
+        uses: actions/checkout@v4
+        with:
+          repository: rioredwards/visual-diffs-action
+          ref: ${{ inputs.action-ref }}
+          path: .visual-diffs-action
+
+      - name: Install crop tool
+        run: npm --prefix .visual-diffs-action install --no-audit --no-fund
+
+      # Pass 1 compares against the committed baselines so Playwright writes
+      # *-diff.png for changed routes. Mismatches are expected, never fatal.
+      # --retries 0 keeps retried failures from duplicating crops.
+      - name: Compare against baselines
+        run: ${{ inputs.test-command }} --retries 0 || true
+
+      - name: Compute publish target
+        id: target
+        run: |
+          dest="pr-${{ github.event.number }}/${{ github.run_id }}"
+          echo "dest=$dest" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event.repository.private }}" = "true" ]; then
+            echo "mode=link" >> "$GITHUB_OUTPUT"
+            echo "base=${{ github.server_url }}/${{ github.repository }}/blob/visual-diffs/$dest" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=inline" >> "$GITHUB_OUTPUT"
+            echo "base=https://raw.githubusercontent.com/${{ github.repository }}/visual-diffs/$dest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Crop diffs to the changed band
+        run: node .visual-diffs-action/crop-diffs.mjs "${{ steps.target.outputs.base }}" --pad "${{ inputs.pad }}" --mode "${{ steps.target.outputs.mode }}"
+
+      - name: Update baselines
+        run: ${{ inputs.test-command }} --update-snapshots
+
+      - name: Commit updated screenshots
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore(visual): update screenshots"
+          file_pattern: ${{ inputs.screenshots-path }}
+
+      # Crops live on an orphan branch so they never pollute main.
+      - name: Publish diff crops
+        run: |
+          set -e
+          dest="${{ steps.target.outputs.dest }}"
+          tmp=$(mktemp -d)
+          git -C "$tmp" init -q -b visual-diffs
+          git -C "$tmp" config user.name github-actions && git -C "$tmp" config user.email github-actions@github.com
+          git -C "$tmp" remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git -C "$tmp" fetch -q origin visual-diffs && git -C "$tmp" checkout -q visual-diffs || true
+          mkdir -p "$tmp/$dest" && cp -r visual-diffs/. "$tmp/$dest/" && rm -f "$tmp/$dest/comment.md"
+          git -C "$tmp" add -A && git -C "$tmp" commit -qm "visual diffs for PR #${{ github.event.number }} run ${{ github.run_id }}" || exit 0
+          git -C "$tmp" push -q origin visual-diffs
+
+      - name: Comment on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: visual-diffs
+          path: visual-diffs/comment.md
