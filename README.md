@@ -42,12 +42,14 @@ jobs:
 | `test-command` | `npx playwright test --grep @visual` | Without `--update-snapshots`/`--retries`; the workflow runs it twice |
 | `screenshots-path` | `e2e/__screenshots__/**` | Committed baseline glob committed back to the PR branch |
 | `pad` | `40` | Rows of context around each changed band |
-| `action-ref` | `main` | Ref of this repo to fetch the crop tool from |
+| `action-ref` | ref the workflow was called at | Override which ref of this repo the crop tool comes from — normally leave unset; it auto-matches your `uses:` pin |
 
 ## Your repo owns
 
 - An `@visual`-tagged Playwright spec: one `toHaveScreenshot` per route, with masks for
-  anything animated/rotating, `animations: 'disabled'`, and hydration waits.
+  anything animated/rotating, `animations: 'disabled'`, and hydration waits. Name the file
+  `visual.spec.ts` and put `@visual` in each test **title** (not the `tag:` option) — the crop
+  tool reads the project name out of Playwright's `visual-<name>-visual-<project>` result dirs.
 - `snapshotPathTemplate` **without a platform suffix** (baselines are Linux-only), e.g.
   `e2e/__screenshots__/{projectName}/{arg}{ext}`, and isolating `@visual` from the normal
   suite (e.g. `grepInvert` unless `VISUAL=1`).

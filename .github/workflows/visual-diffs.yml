@@ -42,10 +42,10 @@ on:
         type: string
         default: "40"
       action-ref:
-        description: Ref of visual-diffs-action to fetch crop-diffs.mjs from
+        description: "Ref of visual-diffs-action to fetch crop-diffs.mjs from (defaults to the ref this workflow was called at)"
         required: false
         type: string
-        default: main
+        default: ""
 
 jobs:
   visual:
@@ -77,7 +77,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: rioredwards/visual-diffs-action
-          ref: ${{ inputs.action-ref }}
+          ref: ${{ inputs.action-ref || github.job_workflow_sha }}
           path: .visual-diffs-action
 
       - name: Install crop tool

@@ -36,9 +36,12 @@ for (const diffPath of diffs) {
   const dir = diffPath.slice(0, -diffPath.split("/").pop().length - 1);
   const name = basename(diffPath, "-diff.png");
   // Playwright result dirs look like visual-<name>-visual-<project>[-retryN]
-  const project = basename(dir)
-    .replace(/^visual-.*-visual-/, "")
-    .replace(/-retry\d+$/, "");
+  const dirName = basename(dir);
+  if (!/^visual-.+-visual-/.test(dirName))
+    throw new Error(
+      `Unexpected result dir "${dirName}" — spec must be visual.spec.ts with "@visual" in each test title (see README)`,
+    );
+  const project = dirName.replace(/^visual-.*-visual-/, "").replace(/-retry\d+$/, "");
   if (seen.has(`${project}/${name}`)) continue; // retry dirs duplicate results
   seen.add(`${project}/${name}`);
   const { data, info } = await sharp(diffPath).raw().toBuffer({ resolveWithObject: true });
