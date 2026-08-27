@@ -79,6 +79,13 @@ jobs:
       HUSKY: 0
 
     steps:
+      # The crops live on an orphan `visual-diffs` branch; a PR branch with the
+      # same name would silently receive the crop commits instead. Fail fast.
+      - name: Guard branch-name collision
+        if: github.head_ref == 'visual-diffs'
+        run: |
+          echo "::error::PR branch 'visual-diffs' collides with the branch this workflow publishes crop images to — rename the PR branch."
+          exit 1
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref }}

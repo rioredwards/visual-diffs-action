@@ -64,3 +64,4 @@ jobs:
   the PR's checks remain those of the last human push.
 - Fork PRs are skipped (no write token).
 - The `visual-diffs` branch grows per run; prune it whenever (delete-and-recreate is safe).
+- Never name a PR branch `visual-diffs` — that is the branch crops are published to (the workflow fails fast on the collision).
