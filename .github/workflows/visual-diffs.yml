@@ -41,6 +41,16 @@ on:
         required: false
         type: string
         default: "40"
+      working-directory:
+        description: Directory holding playwright's test-results/ (monorepos — e.g. apps/web)
+        required: false
+        type: string
+        default: "."
+      postgres-image:
+        description: "Postgres service image (e.g. postgres:17) for apps whose e2e needs a database; empty = no service. Trust auth, user postgres, reachable at host `postgres`"
+        required: false
+        type: string
+        default: ""
       action-ref:
         description: "Ref of visual-diffs-action to fetch crop-diffs.mjs from (defaults to the ref this workflow was called at)"
         required: false
@@ -59,6 +69,12 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    services:
+      postgres:
+        image: ${{ inputs.postgres-image }}
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
     env:
       HUSKY: 0
 
@@ -103,7 +119,8 @@ jobs:
           fi
 
       - name: Crop diffs to the changed band
-        run: node .visual-diffs-action/crop-diffs.mjs "${{ steps.target.outputs.base }}" --pad "${{ inputs.pad }}" --mode "${{ steps.target.outputs.mode }}"
+        working-directory: ${{ inputs.working-directory }}
+        run: node "$GITHUB_WORKSPACE/.visual-diffs-action/crop-diffs.mjs" "${{ steps.target.outputs.base }}" --pad "${{ inputs.pad }}" --mode "${{ steps.target.outputs.mode }}"
 
       - name: Update baselines
         run: ${{ inputs.test-command }} --update-snapshots
@@ -124,7 +141,7 @@ jobs:
           git -C "$tmp" config user.name github-actions && git -C "$tmp" config user.email github-actions@github.com
           git -C "$tmp" remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
           git -C "$tmp" fetch -q origin visual-diffs && git -C "$tmp" checkout -q visual-diffs || true
-          mkdir -p "$tmp/$dest" && cp -r visual-diffs/. "$tmp/$dest/" && rm -f "$tmp/$dest/comment.md"
+          mkdir -p "$tmp/$dest" && cp -r "${{ inputs.working-directory }}/visual-diffs/." "$tmp/$dest/" && rm -f "$tmp/$dest/comment.md"
           git -C "$tmp" add -A && git -C "$tmp" commit -qm "visual diffs for PR #${{ github.event.number }} run ${{ github.run_id }}" || exit 0
           git -C "$tmp" push -q origin visual-diffs
 
@@ -132,4 +149,4 @@ jobs:
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: visual-diffs
-          path: visual-diffs/comment.md
+          path: ${{ inputs.working-directory }}/visual-diffs/comment.md

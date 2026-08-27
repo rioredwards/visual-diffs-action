@@ -42,6 +42,8 @@ jobs:
 | `test-command` | `npx playwright test --grep @visual` | Without `--update-snapshots`/`--retries`; the workflow runs it twice |
 | `screenshots-path` | `e2e/__screenshots__/**` | Committed baseline glob committed back to the PR branch |
 | `pad` | `40` | Rows of context around each changed band |
+| `working-directory` | `.` | Directory holding Playwright's `test-results/` — set for monorepos (e.g. `apps/web`) |
+| `postgres-image` | _(none)_ | Postgres service for e2e suites that need a DB (e.g. `postgres:17`); trust auth, user `postgres`, host `postgres` |
 | `action-ref` | ref the workflow was called at | Override which ref of this repo the crop tool comes from — normally leave unset; it auto-matches your `uses:` pin |
 
 ## Your repo owns
