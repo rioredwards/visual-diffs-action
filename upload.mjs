@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, lstatSync } from 'node:fs';
+import { readdirSync, readFileSync, lstatSync, realpathSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -31,7 +31,7 @@ export function upload({ dir, event, run = (args, input) => execFileSync('gh', a
   const pr = event.pull_request, repo = event.repository.full_name;
   if (!pr || pr.head.repo.full_name !== repo) throw Error('Requires a same-repository pull request.');
   const root = resolve(dir);
-  if (lstatSync(root).isSymbolicLink()) throw Error('Refusing image directory symlink.');
+  if (realpathSync(root) !== root) throw Error('Refusing image directory symlink, including parent components.');
   const files = images(root);
   if (!files.length) throw Error(`No images found in ${root}`);
   if (files.length > 50) throw Error('At most 50 images may be attached per run.');

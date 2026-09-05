@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync, symlinkSync, truncateSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync, truncateSync, mkdirSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { replaceSection, upload } from './upload.mjs';
@@ -14,7 +14,7 @@ test('replaces only its section, preserving surrounding text exactly', () => {
 });
 
 test('uploads through gh, rejects stale heads and missing images, surfaces CLI failure', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pr-images-'));
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'pr-images-')));
   const calls = [];
   const event = { repository: { full_name: 'owner/repo' }, pull_request: { number: 2, head: { sha: 'abc', repo: { full_name: 'owner/repo' } } } };
   const options = { dir, event, run: (args, input) => {
@@ -42,6 +42,10 @@ test('uploads through gh, rejects stale heads and missing images, surfaces CLI f
     for (let i = 0; i < 50; i++) rmSync(join(dir, `extra-${i}.png`));
     symlinkSync(join(dir, 'screen.png'), join(dir, 'linked.png'));
     assert.throws(() => upload(options), /symlink/);
+    mkdirSync(join(dir, 'real', 'images'), { recursive: true });
+    writeFileSync(join(dir, 'real', 'images', 'screen.png'), 'fixture');
+    symlinkSync(join(dir, 'real'), join(dir, 'alias'));
+    assert.throws(() => upload({ ...options, dir: join(dir, 'alias', 'images') }), /symlink/);
     event.pull_request.head.repo.full_name = 'fork/repo';
     assert.throws(() => upload(options), /same-repository/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
