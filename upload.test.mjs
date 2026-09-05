@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, symlinkSync, truncateSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { replaceSection, upload } from './upload.mjs';
@@ -30,7 +30,16 @@ test('uploads through gh, rejects stale heads and missing images, surfaces CLI f
     assert.match(edit.input, /^Original\n\n<!-- visual-evidence:start -->/);
     assert.match(edit.input, /screen\.png/);
     assert.throws(() => upload({ ...options, run: () => JSON.stringify({ headRefOid: 'new' }) }), /head changed/);
-    assert.throws(() => upload({ ...options, run: () => { throw Error('upload failed'); } }), /upload failed/);
+    assert.throws(() => upload({ ...options, run: (args) => {
+      if (args[1] === 'edit') throw Error('upload failed');
+      return JSON.stringify({ body: 'Original', headRefOid: 'abc' });
+    } }), /upload failed/);
+    truncateSync(join(dir, 'screen.png'), 10 * 1024 * 1024 + 1);
+    assert.throws(() => upload(options), /exceeds 10 MB/);
+    writeFileSync(join(dir, 'screen.png'), 'fixture');
+    for (let i = 0; i < 50; i++) writeFileSync(join(dir, `extra-${i}.png`), 'fixture');
+    assert.throws(() => upload(options), /At most 50/);
+    for (let i = 0; i < 50; i++) rmSync(join(dir, `extra-${i}.png`));
     symlinkSync(join(dir, 'screen.png'), join(dir, 'linked.png'));
     assert.throws(() => upload(options), /symlink/);
     event.pull_request.head.repo.full_name = 'fork/repo';
