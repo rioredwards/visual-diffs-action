@@ -22,6 +22,7 @@ test('uploads through gh, rejects stale heads and missing images, surfaces CLI f
     return args[1] === 'view' ? JSON.stringify({ body: 'Original', headRefOid: 'abc' }) : '';
   } };
   try {
+    assert.throws(() => upload({ ...options, dir: '' }), /images input is required/);
     assert.throws(() => upload(options), /No images/);
     writeFileSync(join(dir, 'screen.png'), 'fixture');
     upload(options);

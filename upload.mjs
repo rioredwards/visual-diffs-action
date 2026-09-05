@@ -30,6 +30,7 @@ function images(dir) {
 export function upload({ dir, event, run = (args, input) => execFileSync('gh', args, { input, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }) }) {
   const pr = event.pull_request, repo = event.repository.full_name;
   if (!pr || pr.head.repo.full_name !== repo) throw Error('Requires a same-repository pull request.');
+  if (typeof dir !== 'string' || !dir.trim()) throw Error('The images input is required.');
   const root = resolve(dir);
   if (realpathSync(root) !== root) throw Error('Refusing image directory symlink, including parent components.');
   const files = images(root);
