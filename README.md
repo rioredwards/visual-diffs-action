@@ -1,30 +1,44 @@
-# PR visual evidence
+# Visual diffs in PR descriptions
 
-Upload captured images directly into a PR description with GitHub CLI's native `--attach`.
-Reruns replace one marked section and preserve surrounding text. Capture screenshots however
-your app needs; this action never runs tests, commits baselines, publishes branches or comments.
+Playwright compares UI screenshots against committed baselines. Changed regions become
+before / after / diff strips, uploaded directly into the PR description with `gh --attach`.
+No differences: no attachments and no description edit. Identical strips also skip re-upload.
+Baselines update on the PR branch after a successful screenshot run, as in the original action.
+The displayed evidence describes the last detected change, not a cumulative base-branch diff.
 
 ```yaml
-- uses: rioredwards/visual-diffs-action@<reviewed-commit>
-  if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+visual:
+  permissions:
+    contents: write
+    pull-requests: write
+  uses: rioredwards/visual-diffs-action/.github/workflows/visual-diffs.yml@<commit>
+  secrets:
+    upload-token: ${{ secrets.VISUAL_DIFFS_TOKEN }}
   with:
-    images: visual-evidence
-    token: ${{ secrets.VISUAL_DIFFS_TOKEN }}
+    action-ref: <same-commit>
+    container: mcr.microsoft.com/playwright:v1.62.1-noble
+    install-command: npm ci
+    test-command: npx playwright test --grep @visual
+    screenshots-path: e2e/__screenshots__/**
 ```
 
-Run after screenshot capture, on a Linux x64 runner with Node 22+. The action installs
-checksum-verified gh 2.100.0, including fine-grained PAT support. Use a dedicated token scoped to the repository with Pull requests
-write permission. The built-in GITHUB_TOKEN cannot upload attachments. Validate your token
-with a real upload; repository policy may require approval. Rotate it before expiration.
+Own your Playwright specs, masks, and snapshotPathTemplate. Use `expect(page).toHaveScreenshot`,
+not unconditional captures. The workflow compares, crops, verifies by regenerating snapshots,
+then uploads and commits changed baselines. Missing baselines are initialized without a diff;
+subsequent visual changes produce evidence. Use CI-generated Linux baselines, not macOS pixels.
+For monorepos set `working-directory` to the directory containing `test-results`.
+Optional `postgres-image` provides an isolated database service at hostname `postgres`.
 
-Use a clean image directory: PNG/JPEG/GIF/WebP, up to 50 files, each nonempty and ≤10 MB.
-Paths may contain letters, digits, dots, slashes, underscores and hyphens. Symlinks are rejected.
-Missing images, stale PR heads and CLI/upload failures fail the step. Partial CLI uploads may
-still update the description before returning failure. Serialize runs per PR; GitHub provides
-no atomic body-edit operation, so avoid editing the description during an upload.
+Same-repository PRs only; forks and Dependabot are excluded. Only run trusted code with the
+upload token. Never use `pull_request_target` to run untrusted code. Pin both refs identically.
+Native attachments require a user token scoped to the repository with Pull requests write;
+GITHUB_TOKEN still handles baseline commits. Rotate the upload token before expiration.
+The upload step installs checksum-verified gh 2.100.0 on Linux x64.
 
-Only same-repository `pull_request` events are supported. Never expose this token to fork code
-or use `pull_request_target` to execute PR code. Pin this action to a reviewed commit.
-The former reusable workflow is removed: callers must capture images then use this step action.
+The lower-level composite action accepts `images`, `token`, and optional `allow-empty`.
+It recursively uploads PNG/JPEG/GIF/WebP (50 maximum, each ≤10 MB), rejects symlinks and unsafe
+paths, and preserves surrounding PR text. Stale PR heads and upload errors fail loudly.
+Serialize runs per PR; GitHub has no atomic description-edit operation.
 
-Develop: `node --test`. No package installation required.
+Develop: `npm ci && npm test`. On Macs with a global libvips, use
+`SHARP_IGNORE_GLOBAL_LIBVIPS=1 npm ci` to use Sharp's packaged library.

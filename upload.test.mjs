@@ -24,12 +24,20 @@ test('uploads through gh, rejects stale heads and missing images, surfaces CLI f
   try {
     assert.throws(() => upload({ ...options, dir: '' }), /images input is required/);
     assert.throws(() => upload(options), /No images/);
+    upload({ ...options, allowEmpty: true });
+    assert.equal(calls.length, 0);
     writeFileSync(join(dir, 'screen.png'), 'fixture');
     upload(options);
     const edit = calls.at(-1);
     assert.ok(edit.args.includes('--attach'));
     assert.match(edit.input, /^Original\n\n<!-- visual-evidence:start -->/);
     assert.match(edit.input, /screen\.png/);
+    let edited = false;
+    upload({ ...options, run: (args) => {
+      if (args[1] === 'edit') edited = true;
+      return JSON.stringify({ body: edit.input, headRefOid: 'abc' });
+    } });
+    assert.equal(edited, false);
     assert.throws(() => upload({ ...options, run: () => JSON.stringify({ headRefOid: 'new' }) }), /head changed/);
     assert.throws(() => upload({ ...options, run: (args) => {
       if (args[1] === 'edit') throw Error('upload failed');

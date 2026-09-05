@@ -4,6 +4,9 @@ inputs:
   images:
     description: Directory containing PNG, JPEG, GIF or WebP images (searched recursively).
     required: true
+  allow-empty:
+    description: Leave the PR unchanged when comparison found no changed images.
+    default: 'false'
   token:
     description: User token with repository write access and pull request write permission; GITHUB_TOKEN cannot upload media.
     required: true
@@ -23,6 +26,7 @@ runs:
     - name: Attach images to PR description
       shell: bash
       env:
+        ALLOW_EMPTY: ${{ inputs.allow-empty }}
         GH_TOKEN: ${{ inputs.token }}
         IMAGES_PATH: ${{ inputs.images }}
         UPLOAD_SCRIPT: ${{ github.action_path }}/upload.mjs
