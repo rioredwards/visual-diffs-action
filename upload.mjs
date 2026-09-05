@@ -41,11 +41,11 @@ export function upload({ dir, event, allowEmpty = false, run = (args, input) => 
   }
   if (files.length > 50) throw Error('At most 50 images may be attached per run.');
   const current = JSON.parse(run(['pr', 'view', String(pr.number), '--repo', repo, '--json', 'body,headRefOid']));
-  if (current.headRefOid !== pr.head.sha) throw Error('PR head changed; rerun against the latest commit.');
   const hash = createHash('sha256');
   for (const file of files) hash.update(relative(root, file)).update('\0').update(readFileSync(file));
   const fingerprint = `<!-- visual-evidence:sha256:${hash.digest('hex')} -->`;
   if (current.body?.includes(fingerprint)) { console.log('Visual changes already attached.'); return; }
+  if (current.headRefOid !== pr.head.sha) throw Error('PR head changed; rerun against the latest commit.');
   const section = `${fingerprint}\n### Visual changes (before / after / diff)\n\nCommit: ${pr.head.sha}\n\n` + files.map(file => `![${relative(root, file)}](${file})`).join('\n\n');
   const body = replaceSection(current.body ?? '', section);
   run(['pr', 'edit', String(pr.number), '--repo', repo, '--body-file', '-', ...files.flatMap(file => ['--attach', file])], body);

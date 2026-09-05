@@ -35,7 +35,7 @@ test('uploads through gh, rejects stale heads and missing images, surfaces CLI f
     let edited = false;
     upload({ ...options, run: (args) => {
       if (args[1] === 'edit') edited = true;
-      return JSON.stringify({ body: edit.input, headRefOid: 'abc' });
+      return JSON.stringify({ body: edit.input, headRefOid: 'baseline-bot-commit' });
     } });
     assert.equal(edited, false);
     assert.throws(() => upload({ ...options, run: () => JSON.stringify({ headRefOid: 'new' }) }), /head changed/);
