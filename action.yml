@@ -1,0 +1,19 @@
+name: PR visual evidence
+description: Upload captured images into a managed PR description section using gh --attach.
+inputs:
+  images:
+    description: Directory containing PNG, JPEG, GIF or WebP images (searched recursively).
+    required: true
+  token:
+    description: User token with repository write access and pull request write permission; GITHUB_TOKEN cannot upload media.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Attach images to PR description
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        IMAGES_PATH: ${{ inputs.images }}
+        UPLOAD_SCRIPT: ${{ github.action_path }}/upload.mjs
+      run: node "$UPLOAD_SCRIPT"

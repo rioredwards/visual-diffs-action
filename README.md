@@ -1,67 +1,30 @@
-# visual-diffs-action
+# PR visual evidence
 
-Playwright visual snapshots → GitHub-native PR image diffs + a sticky comment with
-**cropped before / after / diff strips** of exactly the pixels that changed.
-No third-party service; everything stays in your repo.
-
-Proven in [rioredwards/portfolio#82](https://github.com/rioredwards/portfolio/pull/82).
-
-## What a PR gets
-
-1. CI regenerates the `@visual` Playwright screenshots in a pinned Linux container and
-   commits changed baselines to the PR branch → GitHub shows native image diffs
-   (2-up / swipe / onion-skin) in the commit.
-2. Each changed region is cropped to a stacked before/after/diff strip and posted as one
-   sticky PR comment. Public repos get inline images; private repos get links
-   (GitHub can't render authenticated raw images inline).
-3. Crops live on an orphan `visual-diffs` branch — they never touch your main history.
-
-## Usage
+Upload captured images directly into a PR description with GitHub CLI's native `--attach`.
+Reruns replace one marked section and preserve surrounding text. Capture screenshots however
+your app needs; this action never runs tests, commits baselines, publishes branches or comments.
 
 ```yaml
-# .github/workflows/ci.yml
-jobs:
-  visual:
-    if: ${{ !github.event.pull_request.head.repo.fork }}
-    permissions:
-      contents: write
-      pull-requests: write
-    uses: rioredwards/visual-diffs-action/.github/workflows/visual-diffs.yml@main
-    with:
-      container: mcr.microsoft.com/playwright:v1.58.1-noble   # match your Playwright version
-      install-command: npm ci
-      test-command: npx playwright test --grep @visual
+- uses: rioredwards/visual-diffs-action@<reviewed-commit>
+  if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+  with:
+    images: visual-evidence
+    token: ${{ secrets.VISUAL_DIFFS_TOKEN }}
 ```
 
-### Inputs
+Run after screenshot capture, on a Linux runner with Node 22+ and gh 2.99+ (2.100+ for
+fine-grained PAT support). Use a dedicated token scoped to the repository with Pull requests
+write permission. The built-in GITHUB_TOKEN cannot upload attachments. Validate your token
+with a real upload; repository policy may require approval. Rotate it before expiration.
 
-| Input | Default | Notes |
-|---|---|---|
-| `container` | *(required)* | Playwright image; **must match** the repo's Playwright version |
-| `install-command` | `npm ci` | Inline any env vars it needs (`HUSKY=0` is already set) |
-| `test-command` | `npx playwright test --grep @visual` | Without `--update-snapshots`/`--retries`; the workflow runs it twice |
-| `screenshots-path` | `e2e/__screenshots__/**` | Committed baseline glob committed back to the PR branch |
-| `pad` | `40` | Rows of context around each changed band |
-| `working-directory` | `.` | Directory holding Playwright's `test-results/` — set for monorepos (e.g. `apps/web`) |
-| `postgres-image` | _(none)_ | Postgres service for e2e suites that need a DB (e.g. `postgres:17`); trust auth, user `postgres`, host `postgres` |
-| `action-ref` | ref the workflow was called at | Override which ref of this repo the crop tool comes from — normally leave unset; it auto-matches your `uses:` pin |
+Use a clean image directory: PNG/JPEG/GIF/WebP, up to 50 files, each nonempty and ≤10 MB.
+Paths may contain letters, digits, dots, slashes, underscores and hyphens. Symlinks are rejected.
+Missing images, stale PR heads and CLI/upload failures fail the step. Partial CLI uploads may
+still update the description before returning failure. Serialize runs per PR; GitHub provides
+no atomic body-edit operation, so avoid editing the description during an upload.
 
-## Your repo owns
+Only same-repository `pull_request` events are supported. Never expose this token to fork code
+or use `pull_request_target` to execute PR code. Pin this action to a reviewed commit.
+The former reusable workflow is removed: callers must capture images then use this step action.
 
-- An `@visual`-tagged Playwright spec: one `toHaveScreenshot` per route, with masks for
-  anything animated/rotating, `animations: 'disabled'`, and hydration waits. Name the file
-  `visual.spec.ts` and put `@visual` in each test **title** (not the `tag:` option) — the crop
-  tool reads the project name out of Playwright's `visual-<name>-visual-<project>` result dirs.
-- `snapshotPathTemplate` **without a platform suffix** (baselines are Linux-only), e.g.
-  `e2e/__screenshots__/{projectName}/{arg}{ext}`, and isolating `@visual` from the normal
-  suite (e.g. `grepInvert` unless `VISUAL=1`).
-- Never run `--update-snapshots` locally on macOS — CI owns the baselines.
-
-## Notes / limits
-
-- Never fails on pixel diffs — it's a "show me" job, not a gate.
-- The baseline commit is pushed with `GITHUB_TOKEN`, so it does **not** re-trigger CI;
-  the PR's checks remain those of the last human push.
-- Fork PRs are skipped (no write token).
-- The `visual-diffs` branch grows per run; prune it whenever (delete-and-recreate is safe).
-- Never name a PR branch `visual-diffs` — that is the branch crops are published to (the workflow fails fast on the collision).
+Develop: `node --test`. No package installation required.
