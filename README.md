@@ -12,8 +12,8 @@ your app needs; this action never runs tests, commits baselines, publishes branc
     token: ${{ secrets.VISUAL_DIFFS_TOKEN }}
 ```
 
-Run after screenshot capture, on a Linux runner with Node 22+ and gh 2.99+ (2.100+ for
-fine-grained PAT support). Use a dedicated token scoped to the repository with Pull requests
+Run after screenshot capture, on a Linux x64 runner with Node 22+. The action installs
+checksum-verified gh 2.100.0, including fine-grained PAT support. Use a dedicated token scoped to the repository with Pull requests
 write permission. The built-in GITHUB_TOKEN cannot upload attachments. Validate your token
 with a real upload; repository policy may require approval. Rotate it before expiration.
 
