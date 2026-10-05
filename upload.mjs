@@ -48,8 +48,8 @@ const staleHead = () => Error('PR head changed; rerun against the latest commit.
 // The comparison matched the target branch: drop any evidence left from earlier runs.
 export function clear({ event, run = gh }) {
   const { pr, repo } = sameRepoPullRequest(event);
-  const current = view(run, pr, repo), body = removeSection(current.body ?? '');
-  if (body === (current.body ?? '')) { console.log('No visual evidence to clear.'); return; }
+  const current = view(run, pr, repo), original = current.body ?? '', body = removeSection(original);
+  if (body === original) { console.log('No visual evidence to clear.'); return; }
   if (current.headRefOid !== pr.head.sha) throw staleHead();
   run(['pr', 'edit', String(pr.number), '--repo', repo, '--body-file', '-'], body);
   console.log('PR matches its target branch; visual evidence cleared.');

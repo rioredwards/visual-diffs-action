@@ -32,8 +32,8 @@ jobs:
 ```
 
 **Seeding.** "Run workflow" (`workflow_dispatch`) on a branch captures and commits its baselines,
-with no comparison or upload. A target branch without a complete set of baselines is "unseeded":
-PRs into it log a warning, skip the comparison, and still commit their own baselines.
+with no comparison or upload. A target branch missing any of the PR's baselines (unseeded, or the
+PR adds a screenshot) makes the PR log a warning, skip the comparison, and still commit baselines.
 
 Own your Playwright specs, masks, and snapshotPathTemplate. Use `expect(page).toHaveScreenshot`,
 not unconditional captures. The capture pass must succeed: broken pages never publish evidence

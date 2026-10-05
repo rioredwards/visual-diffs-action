@@ -27,7 +27,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const ready = useTargetBaseline(head, target);
   appendFileSync(process.env.GITHUB_OUTPUT, `ready=${ready}\n`);
   if (!ready) {
-    const message = 'Target branch screenshots are unseeded or incomplete; visual comparison was skipped. Seed the target branch with "Run workflow".';
+    const message = 'Target branch lacks some of this PR\'s screenshots (unseeded, or new in this PR); visual comparison was skipped. Seed an unseeded target with "Run workflow".';
     console.log(`::warning::${message}`);
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`);
   }
