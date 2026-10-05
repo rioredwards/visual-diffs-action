@@ -15,7 +15,7 @@ name: Visual diffs
 on:
   pull_request:
     types: [opened, reopened, synchronize]
-    paths: [src/**, .github/workflows/visual-diffs.yml]
+    paths: [src/**, e2e/**, .github/workflows/visual-diffs.yml]
   workflow_dispatch:
 jobs:
   visual:

@@ -116,7 +116,7 @@ jobs:
         id: baseline
         env:
           SCREENSHOTS_DIR: ${{ inputs.screenshots-dir }}
-        run: node .visual-diffs-action/baseline.mjs "$SCREENSHOTS_DIR" ".visual-target/$SCREENSHOTS_DIR"
+        run: node .visual-diffs-action/baseline.mjs "$SCREENSHOTS_DIR" ".visual-target/$SCREENSHOTS_DIR" .visual-head
 
       # Mismatches are expected here, never fatal. --retries 0 keeps retried
       # failures from duplicating crops.
@@ -130,6 +130,12 @@ jobs:
         if: steps.baseline.outputs.ready == 'true'
         working-directory: ${{ inputs.working-directory }}
         run: node "$GITHUB_WORKSPACE/.visual-diffs-action/crop-diffs.mjs" --pad "${{ inputs.pad }}"
+
+      - name: Restore this branch's baselines
+        if: steps.baseline.outputs.ready == 'true'
+        env:
+          SCREENSHOTS_DIR: ${{ inputs.screenshots-dir }}
+        run: node .visual-diffs-action/baseline.mjs --restore "$SCREENSHOTS_DIR" .visual-head
 
       # This pass must succeed: broken pages never publish evidence or baselines.
       - name: Capture this branch's screenshots
