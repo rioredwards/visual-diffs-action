@@ -36,6 +36,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     console.log(`::warning::${message}`);
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`);
   } else if (added.length) {
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `New screenshots in this PR (not compared, no target baseline):\n${added.map(file => `- ${file}\n`).join('')}`);
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `New screenshots in this PR (no target baseline to compare against):\n${added.map(file => `- ${file}\n`).join('')}`);
   }
 }
