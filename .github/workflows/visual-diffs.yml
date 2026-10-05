@@ -1,21 +1,10 @@
-# Reusable workflow: Playwright visual snapshots → PR image diffs + cropped sticky comment.
-#
-# What it does on every PR run:
-#   1. Compares @visual Playwright screenshots against the committed baselines.
-#   2. Crops each changed region to a before/after/diff strip (crop-diffs.mjs).
-#   3. Regenerates the baselines and commits them to the PR branch (GitHub then
-#      shows native image diffs; the bot push does not re-trigger CI).
-#   4. Publishes the crops to an orphan `visual-diffs` branch and posts/updates
-#      one sticky PR comment. Public repos get inline images; private repos get
-#      links (raw images can't render inline there).
-#
-# Caller contract (see README.md):
-#   permissions: contents: write + pull-requests: write on the calling job.
-#   The repo owns its @visual spec, masks, and snapshotPathTemplate.
 name: visual-diffs
 
 on:
   workflow_call:
+    secrets:
+      upload-token:
+        required: true
     inputs:
       container:
         description: Playwright container image — must match the repo's Playwright version
@@ -52,15 +41,14 @@ on:
         type: string
         default: ""
       action-ref:
-        description: "Ref of visual-diffs-action to fetch crop-diffs.mjs from (defaults to the ref this workflow was called at)"
-        required: false
+        description: "Exact commit of visual-diffs-action, matching the caller workflow pin"
+        required: true
         type: string
-        default: ""
 
 jobs:
   visual:
     name: Visual snapshots → PR branch
-    if: ${{ !github.event.pull_request.head.repo.fork }}
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' && github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     container: ${{ inputs.container }}
     concurrency:
@@ -79,16 +67,9 @@ jobs:
       HUSKY: 0
 
     steps:
-      # The crops live on an orphan `visual-diffs` branch; a PR branch with the
-      # same name would silently receive the crop commits instead. Fail fast.
-      - name: Guard branch-name collision
-        if: github.head_ref == 'visual-diffs'
-        run: |
-          echo "::error::PR branch 'visual-diffs' collides with the branch this workflow publishes crop images to — rename the PR branch."
-          exit 1
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
       # Checkout inside a container leaves the workspace owned by another uid.
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -100,11 +81,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: rioredwards/visual-diffs-action
-          ref: ${{ inputs.action-ref || github.job_workflow_sha }}
+          ref: ${{ inputs.action-ref }}
           path: .visual-diffs-action
 
       - name: Install crop tool
-        run: npm --prefix .visual-diffs-action install --no-audit --no-fund
+        run: npm --prefix .visual-diffs-action ci --no-audit --no-fund
 
       # Pass 1 compares against the committed baselines so Playwright writes
       # *-diff.png for changed routes. Mismatches are expected, never fatal.
@@ -112,48 +93,24 @@ jobs:
       - name: Compare against baselines
         run: ${{ inputs.test-command }} --retries 0 || true
 
-      - name: Compute publish target
-        id: target
-        run: |
-          dest="pr-${{ github.event.number }}/${{ github.run_id }}"
-          echo "dest=$dest" >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event.repository.private }}" = "true" ]; then
-            echo "mode=link" >> "$GITHUB_OUTPUT"
-            echo "base=${{ github.server_url }}/${{ github.repository }}/blob/visual-diffs/$dest" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=inline" >> "$GITHUB_OUTPUT"
-            echo "base=https://raw.githubusercontent.com/${{ github.repository }}/visual-diffs/$dest" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Crop diffs to the changed band
+      - name: Crop visual changes
         working-directory: ${{ inputs.working-directory }}
-        run: node "$GITHUB_WORKSPACE/.visual-diffs-action/crop-diffs.mjs" "${{ steps.target.outputs.base }}" --pad "${{ inputs.pad }}" --mode "${{ steps.target.outputs.mode }}"
+        run: node "$GITHUB_WORKSPACE/.visual-diffs-action/crop-diffs.mjs" --pad "${{ inputs.pad }}"
 
       - name: Update baselines
         run: ${{ inputs.test-command }} --update-snapshots
 
+      - name: Attach changed regions to PR description
+        uses: ./.visual-diffs-action
+        with:
+          images: ${{ inputs.working-directory }}/visual-diffs
+          token: ${{ secrets.upload-token }}
+          allow-empty: 'true'
+
       - name: Commit updated screenshots
         uses: stefanzweifel/git-auto-commit-action@v7
         with:
+          branch: ${{ github.head_ref }}
           commit_message: "chore(visual): update screenshots"
           file_pattern: ${{ inputs.screenshots-path }}
 
-      # Crops live on an orphan branch so they never pollute main.
-      - name: Publish diff crops
-        run: |
-          set -e
-          dest="${{ steps.target.outputs.dest }}"
-          tmp=$(mktemp -d)
-          git -C "$tmp" init -q -b visual-diffs
-          git -C "$tmp" config user.name github-actions && git -C "$tmp" config user.email github-actions@github.com
-          git -C "$tmp" remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
-          git -C "$tmp" fetch -q origin visual-diffs && git -C "$tmp" checkout -q visual-diffs || true
-          mkdir -p "$tmp/$dest" && cp -r "${{ inputs.working-directory }}/visual-diffs/." "$tmp/$dest/" && rm -f "$tmp/$dest/comment.md"
-          git -C "$tmp" add -A && git -C "$tmp" commit -qm "visual diffs for PR #${{ github.event.number }} run ${{ github.run_id }}" || exit 0
-          git -C "$tmp" push -q origin visual-diffs
-
-      - name: Comment on PR
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: visual-diffs
-          path: ${{ inputs.working-directory }}/visual-diffs/comment.md

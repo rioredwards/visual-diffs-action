@@ -1,27 +1,17 @@
-// Crops Playwright visual-test diffs to the changed band and writes a PR comment.
-// Input:  test-results/**/<name>-{expected,actual,diff}.png (from a non-updating run)
-// Output: visual-diffs/<project>/<name>.png (before / after / diff stacked) + visual-diffs/comment.md
-// Usage:  node crop-diffs.mjs <baseUrl> [--pad N] [--mode inline|link]
-//   inline: embed images with ![](baseUrl/...) — baseUrl should be a raw.githubusercontent.com prefix
-//   link:   plain links to baseUrl/... — for private repos, where raw images can't render inline
-import { readdirSync, statSync, mkdirSync, writeFileSync, existsSync } from "fs";
+import { readdirSync, statSync, mkdirSync, existsSync } from "fs";
 import { join, basename } from "path";
 import sharp from "sharp";
 
 const args = process.argv.slice(2);
-const baseUrl = args[0] && !args[0].startsWith("--") ? args[0] : "";
 const flag = (name, dflt) => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : dflt;
 };
 const PAD = Number(flag("pad", "40"));
-const MODE = flag("mode", "inline");
-if (!baseUrl) throw new Error("crop-diffs: missing <baseUrl> argument");
-if (!["inline", "link"].includes(MODE)) throw new Error(`crop-diffs: bad --mode ${MODE}`);
 if (!Number.isFinite(PAD) || PAD < 0) throw new Error(`crop-diffs: bad --pad ${flag("pad")}`);
 
 const out = "visual-diffs";
-const rows = [];
+let count = 0;
 const seen = new Set();
 
 const walk = (dir) =>
@@ -35,14 +25,8 @@ const diffs = existsSync("test-results") ? walk("test-results").sort() : [];
 for (const diffPath of diffs) {
   const dir = diffPath.slice(0, -diffPath.split("/").pop().length - 1);
   const name = basename(diffPath, "-diff.png");
-  // Playwright result dirs look like visual-<name>-visual-<project>[-retryN]
-  const dirName = basename(dir);
-  if (!/^visual-.+-visual-/.test(dirName))
-    throw new Error(
-      `Unexpected result dir "${dirName}" — spec must be visual.spec.ts with "@visual" in each test title (see README)`,
-    );
-  const project = dirName.replace(/^visual-.*-visual-/, "").replace(/-retry\d+$/, "");
-  if (seen.has(`${project}/${name}`)) continue; // retry dirs duplicate results
+  const project = basename(dir);
+  if (seen.has(`${project}/${name}`)) continue;
   seen.add(`${project}/${name}`);
   const { data, info } = await sharp(diffPath).raw().toBuffer({ resolveWithObject: true });
   let top = -1,
@@ -62,7 +46,13 @@ for (const diffPath of diffs) {
   top = Math.max(0, top - PAD);
   bottom = Math.min(info.height - 1, bottom + PAD);
   const band = { left: 0, top, width: info.width, height: bottom - top + 1 };
-  const crop = (f) => sharp(join(dir, `${name}-${f}.png`)).extract(band).toBuffer();
+  const crop = async (f) => {
+    const file = join(dir, `${name}-${f}.png`);
+    const meta = await sharp(file).metadata();
+    const padded = await sharp(file).extend({ top: 0, left: 0, right: info.width - meta.width,
+      bottom: info.height - meta.height, background: "white" }).png().toBuffer();
+    return sharp(padded).extract(band).toBuffer();
+  };
   const [before, after, diff] = await Promise.all(["expected", "actual", "diff"].map(crop));
   const gap = 16;
   mkdirSync(join(out, project), { recursive: true });
@@ -77,19 +67,7 @@ for (const diffPath of diffs) {
     ])
     .png()
     .toFile(join(out, project, `${name}.png`));
-  const url = `${baseUrl}/${project}/${name}.png`;
-  rows.push(
-    MODE === "inline"
-      ? `**${name}** · ${project} · rows ${top}–${bottom}\n\n![${name} ${project}](${url})`
-      : `**${name}** · ${project} · rows ${top}–${bottom} · [📎 view](${url})`,
-  );
+  count++;
 }
-
 mkdirSync(out, { recursive: true });
-writeFileSync(
-  join(out, "comment.md"),
-  rows.length
-    ? `### 📸 Visual changes (before / after / diff)\n\n${rows.join("\n\n")}\n`
-    : "### 📸 Visual changes\n\nNone detected.\n",
-);
-console.log(`${rows.length} visual diff(s)`);
+console.log(`${count} visual diff(s)`);
