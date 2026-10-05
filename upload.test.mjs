@@ -3,14 +3,33 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, rmSync, symlinkSync, truncateSync, mkdirSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { replaceSection, upload } from './upload.mjs';
+import { replaceSection, removeSection, upload, clear } from './upload.mjs';
 
 test('replaces only its section, preserving surrounding text exactly', () => {
   const first = replaceSection('User text\n', 'old');
   assert.equal(replaceSection(first + '\nFooter', 'new'), 'User text\n\n\n<!-- visual-evidence:start -->\nnew\n<!-- visual-evidence:end -->\nFooter');
   for (const body of ['<!-- visual-evidence:start -->', first + first]) {
     assert.throws(() => replaceSection(body, 'new'), /markers/);
+    assert.throws(() => removeSection(body), /markers/);
   }
+  assert.equal(removeSection(first), 'User text');
+  assert.equal(removeSection(first + '\nFooter'), 'User text\n\n\n\nFooter');
+  assert.equal(removeSection('No evidence'), 'No evidence');
+});
+
+test('clears the section when the PR matches its target, rejecting stale heads', () => {
+  const event = { repository: { full_name: 'owner/repo' }, pull_request: { number: 2, head: { sha: 'abc', repo: { full_name: 'owner/repo' } } } };
+  const edits = [];
+  const gh = (body, headRefOid = 'abc') => (args, input) => {
+    if (args[1] === 'edit') { edits.push(input); return ''; }
+    return JSON.stringify({ body, headRefOid });
+  };
+  clear({ event, run: gh('No evidence', 'baseline-bot-commit') });
+  assert.equal(edits.length, 0);
+  const withEvidence = replaceSection('Original', 'old');
+  assert.throws(() => clear({ event, run: gh(withEvidence, 'new') }), /head changed/);
+  clear({ event, run: gh(withEvidence) });
+  assert.deepEqual(edits, ['Original']);
 });
 
 test('uploads through gh, rejects stale heads and missing images, surfaces CLI failure', () => {

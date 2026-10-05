@@ -7,6 +7,9 @@ inputs:
   allow-empty:
     description: Leave the PR unchanged when comparison found no changed images.
     default: 'false'
+  clear:
+    description: Remove the visual evidence section instead of attaching images (the comparison matched).
+    default: 'false'
   token:
     description: User token with repository write access and pull request write permission; GITHUB_TOKEN cannot upload media.
     required: true
@@ -27,6 +30,7 @@ runs:
       shell: bash
       env:
         ALLOW_EMPTY: ${{ inputs.allow-empty }}
+        CLEAR: ${{ inputs.clear }}
         GH_TOKEN: ${{ inputs.token }}
         IMAGES_PATH: ${{ inputs.images }}
         UPLOAD_SCRIPT: ${{ github.action_path }}/upload.mjs
