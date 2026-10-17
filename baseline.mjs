@@ -1,4 +1,4 @@
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -43,6 +43,12 @@ export function prepareNewScreenshots(head, target, backup) {
   }
 }
 
+// Comparison can create missing references. Only the capture pass may supply new images.
+export function discardNewScreenshots(head, target) {
+  const available = new Set(pngs(target));
+  for (const file of pngs(head).filter(file => !available.has(file))) unlinkSync(join(head, file));
+}
+
 // Publish fresh captures, then preserve skipped tests' baselines without publishing them.
 export function copyNewScreenshots(head, target, out, backup) {
   mkdirSync(out, { recursive: true });
@@ -60,6 +66,12 @@ export function copyNewScreenshots(head, target, out, backup) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
+  if (args[0] === '--discard-new') {
+    const [, head, target] = args;
+    if (!head || !target) throw Error('Usage: node baseline.mjs --discard-new <pr-screenshots-dir> <target-screenshots-dir>');
+    discardNewScreenshots(head, target);
+    process.exit(0);
+  }
   if (args[0] === '--prepare-new') {
     const [, head, target, backup] = args;
     if (!head || !target || !backup) throw Error('Usage: node baseline.mjs --prepare-new <pr-screenshots-dir> <target-screenshots-dir> <backup-dir>');

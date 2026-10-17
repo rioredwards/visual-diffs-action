@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { useTargetBaseline, restoreHead, prepareNewScreenshots, copyNewScreenshots } from './baseline.mjs';
+import { useTargetBaseline, restoreHead, prepareNewScreenshots, discardNewScreenshots, copyNewScreenshots } from './baseline.mjs';
 
 const fixture = (run) => {
   const root = mkdtempSync(join(tmpdir(), 'visual-baseline-'));
@@ -93,4 +93,21 @@ test('creates empty evidence and restores baselines when every new screen is ski
   assert.deepEqual(copyNewScreenshots(head, target, out, backup), []);
   assert.equal(existsSync(out), true);
   assert.equal(readFileSync(join(head, 'chromium', 'skipped.png'), 'utf8'), 'previous screen');
+}));
+
+test('discards comparison-created references and restores only original skipped baselines', () => fixture(({ root, head, target, backup }) => {
+  writeFileSync(join(head, 'skipped.png'), 'original baseline');
+  writeFileSync(join(head, 'existing.png'), 'original existing');
+  writeFileSync(join(target, 'existing.png'), 'target existing');
+  prepareNewScreenshots(head, target, backup);
+  const comparisonBackup = join(root, 'comparison-backup');
+  useTargetBaseline(head, target, comparisonBackup);
+  writeFileSync(join(head, 'skipped.png'), 'comparison reference');
+  writeFileSync(join(head, 'uncommitted.png'), 'comparison reference');
+  restoreHead(head, comparisonBackup);
+  discardNewScreenshots(head, target);
+  assert.equal(readFileSync(join(head, 'existing.png'), 'utf8'), 'original existing');
+  assert.deepEqual(copyNewScreenshots(head, target, join(root, 'evidence'), backup), []);
+  assert.equal(readFileSync(join(head, 'skipped.png'), 'utf8'), 'original baseline');
+  assert.equal(existsSync(join(head, 'uncommitted.png')), false);
 }));
