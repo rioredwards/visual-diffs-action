@@ -137,18 +137,32 @@ jobs:
           SCREENSHOTS_DIR: ${{ inputs.screenshots-dir }}
         run: node .visual-diffs-action/baseline.mjs --restore "$SCREENSHOTS_DIR" .visual-head
 
+      - name: Set aside new baselines before capture
+        if: github.event_name == 'pull_request'
+        env:
+          SCREENSHOTS_DIR: ${{ inputs.screenshots-dir }}
+        run: node .visual-diffs-action/baseline.mjs --prepare-new "$SCREENSHOTS_DIR" ".visual-target/$SCREENSHOTS_DIR" .visual-new-backup
+
       # This pass must succeed: broken pages never publish evidence or baselines.
       - name: Capture this branch's screenshots
         run: ${{ inputs.test-command }} --update-snapshots
 
+      - name: Include new screens without target baselines
+        if: github.event_name == 'pull_request'
+        id: new-screens
+        env:
+          SCREENSHOTS_DIR: ${{ inputs.screenshots-dir }}
+          EVIDENCE_DIR: ${{ inputs.working-directory }}/visual-diffs/new-screens
+        run: node .visual-diffs-action/baseline.mjs --new "$SCREENSHOTS_DIR" ".visual-target/$SCREENSHOTS_DIR" "$EVIDENCE_DIR" .visual-new-backup
+
       - name: Update PR description
-        if: steps.baseline.outputs.ready == 'true'
+        if: github.event_name == 'pull_request'
         uses: ./.visual-diffs-action
         with:
           images: ${{ inputs.working-directory }}/visual-diffs
           token: ${{ secrets.upload-token }}
           allow-empty: 'true'
-          clear: ${{ steps.compare.outcome == 'success' }}
+          clear: ${{ steps.compare.outcome == 'success' && steps.new-screens.outputs.added == '0' }}
 
       - name: Commit updated screenshots
         uses: stefanzweifel/git-auto-commit-action@v7
