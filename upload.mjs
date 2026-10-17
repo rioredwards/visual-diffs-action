@@ -72,7 +72,14 @@ export function upload({ dir, event, allowEmpty = false, run = gh }) {
   const fingerprint = `<!-- visual-evidence:sha256:${hash.digest('hex')} -->`;
   if (current.body?.includes(fingerprint)) { console.log('Visual changes already attached.'); return; }
   if (current.headRefOid !== pr.head.sha) throw staleHead();
-  const section = `${fingerprint}\n### Visual changes (before / after / diff)\n\nCommit: ${pr.head.sha}\n\n` + files.map(file => `![${relative(root, file)}](${file})`).join('\n\n');
+  const isNew = file => relative(root, file).startsWith('new-screens/');
+  const group = (title, items) => items.length ? `#### ${title}\n\n` + items.map(file =>
+    `![${relative(root, file).replace(/^new-screens\//, '')}](${file})`).join('\n\n') : '';
+  const sections = [
+    group('Changed screens (before / after / diff)', files.filter(file => !isNew(file))),
+    group('New screens (after only)', files.filter(isNew)),
+  ].filter(Boolean);
+  const section = `${fingerprint}\n### Visual changes\n\nCommit: ${pr.head.sha}\n\n${sections.join('\n\n')}`;
   const body = replaceSection(current.body ?? '', section);
   run(['pr', 'edit', String(pr.number), '--repo', repo, '--body-file', '-', ...files.flatMap(file => ['--attach', file])], body);
   console.log(`Attached ${files.length} image(s) to the PR description.`);

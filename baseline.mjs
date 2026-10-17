@@ -1,4 +1,4 @@
-import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -34,8 +34,58 @@ export function restoreHead(head, backup) {
   for (const file of pngs(backup)) copyFileSync(join(backup, file), join(head, file));
 }
 
+// Force PR-only snapshots to be recreated, so skipped tests cannot publish stale images.
+export function prepareNewScreenshots(head, target, backup) {
+  const available = new Set(pngs(target));
+  for (const file of pngs(head).filter(file => !available.has(file))) {
+    mkdirSync(dirname(join(backup, file)), { recursive: true });
+    renameSync(join(head, file), join(backup, file));
+  }
+}
+
+// Comparison can create missing references. Only the capture pass may supply new images.
+export function discardNewScreenshots(head, target) {
+  const available = new Set(pngs(target));
+  for (const file of pngs(head).filter(file => !available.has(file))) unlinkSync(join(head, file));
+}
+
+// Publish fresh captures, then preserve skipped tests' baselines without publishing them.
+export function copyNewScreenshots(head, target, out, backup) {
+  mkdirSync(out, { recursive: true });
+  const available = new Set(pngs(target));
+  const added = pngs(head).filter(file => !available.has(file)).sort();
+  for (const file of added) {
+    mkdirSync(dirname(join(out, file)), { recursive: true });
+    copyFileSync(join(head, file), join(out, file));
+  }
+  for (const file of pngs(backup)) {
+    if (!existsSync(join(head, file))) copyFileSync(join(backup, file), join(head, file));
+  }
+  return added;
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
+  if (args[0] === '--discard-new') {
+    const [, head, target] = args;
+    if (!head || !target) throw Error('Usage: node baseline.mjs --discard-new <pr-screenshots-dir> <target-screenshots-dir>');
+    discardNewScreenshots(head, target);
+    process.exit(0);
+  }
+  if (args[0] === '--prepare-new') {
+    const [, head, target, backup] = args;
+    if (!head || !target || !backup) throw Error('Usage: node baseline.mjs --prepare-new <pr-screenshots-dir> <target-screenshots-dir> <backup-dir>');
+    prepareNewScreenshots(head, target, backup);
+    process.exit(0);
+  }
+  if (args[0] === '--new') {
+    const [, head, target, out, backup] = args;
+    if (!head || !target || !out || !backup) throw Error('Usage: node baseline.mjs --new <pr-screenshots-dir> <target-screenshots-dir> <output-dir> <backup-dir>');
+    const added = copyNewScreenshots(head, target, out, backup);
+    appendFileSync(process.env.GITHUB_OUTPUT, `added=${added.length}\n`);
+    console.log(`${added.length} new screenshot(s) for the PR description.`);
+    process.exit(0);
+  }
   if (args[0] === '--restore') {
     const [, head, backup] = args;
     if (!head || !backup) throw Error('Usage: node baseline.mjs --restore <pr-screenshots-dir> <backup-dir>');
@@ -47,7 +97,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const { ready, added } = useTargetBaseline(head, target, backup);
   appendFileSync(process.env.GITHUB_OUTPUT, `ready=${ready}\n`);
   if (!ready) {
-    const message = 'Target branch has no baseline screenshots (unseeded); visual comparison was skipped. Seed it with "Run workflow".';
+    const message = 'Target branch has no baseline screenshots (unseeded); comparison was skipped. Captured screens will appear as new.';
     console.log(`::warning::${message}`);
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${message}\n`);
   } else if (added.length) {

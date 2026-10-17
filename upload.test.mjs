@@ -78,3 +78,22 @@ test('uploads through gh, rejects stale heads and missing images, surfaces CLI f
     assert.throws(() => upload(options), /same-repository/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('labels mixed evidence and uploads new screens without inventing a before image', () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'new-screen-images-')));
+  const event = { repository: { full_name: 'owner/repo' }, pull_request: { number: 2, head: { sha: 'abc', repo: { full_name: 'owner/repo' } } } };
+  let body;
+  try {
+    mkdirSync(join(dir, 'new-screens', 'chromium'), { recursive: true });
+    writeFileSync(join(dir, 'new-screens', 'chromium', 'picker.png'), 'new screen');
+    writeFileSync(join(dir, 'changed.png'), 'diff strip');
+    upload({ dir, event, run: (args, input) => {
+      if (args[1] === 'view') return JSON.stringify({ body: 'Original', headRefOid: 'abc' });
+      body = input;
+      assert.equal(args.filter(arg => arg === '--attach').length, 2);
+    } });
+    assert.match(body, /Changed screens \(before \/ after \/ diff\)/);
+    assert.match(body, /New screens \(after only\)/);
+    assert.match(body, /!\[chromium\/picker\.png\]/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

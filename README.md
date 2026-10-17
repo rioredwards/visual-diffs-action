@@ -4,10 +4,11 @@ Playwright compares a PR's UI screenshots against the **target branch's** commit
 Changed regions become before / after / diff strips, uploaded directly into the PR description
 with `gh --attach`. The evidence is cumulative: everything the PR changes versus its target, not
 just the last push. Identical strips skip re-upload. When the PR matches its target again, the
-evidence section is removed. Screenshots the target lacks are new: they have no target baseline to diff against (the
-step summary lists them) and never block the rest. A failed comparison with nothing to crop leaves
-the description unchanged. The PR's own baselines are then captured and
-committed to its branch.
+evidence section is removed. Screenshots the target lacks appear under **New screens (after
+only)**, including on reruns after the bot commits their baselines. Changed screens keep their
+before / after / diff strips. Evidence is published only after capture succeeds, then the PR's
+baselines are committed to its branch. New screens skipped by the capture keep their baselines
+but are excluded from evidence.
 
 ```yaml
 # .github/workflows/visual-diffs.yml
@@ -34,7 +35,7 @@ jobs:
 
 **Seeding.** "Run workflow" (`workflow_dispatch`) on a branch captures and commits its baselines,
 with no comparison or upload. A target branch with no baselines at all (unseeded) makes the PR log a
-warning, skip the comparison, and still commit baselines.
+warning, skip the comparison, attach captured screens as new, and still commit baselines.
 
 Own your Playwright specs, masks, and snapshotPathTemplate. Use `expect(page).toHaveScreenshot`,
 not unconditional captures. The capture pass must succeed: broken pages never publish evidence
@@ -52,6 +53,7 @@ The upload step installs checksum-verified gh 2.100.0 on Linux x64.
 The lower-level composite action accepts `images`, `token`, and optional `allow-empty` and `clear`.
 It recursively uploads PNG/JPEG/GIF/WebP (50 maximum, each ≤10 MB), rejects symlinks and unsafe
 paths, and preserves surrounding PR text. Stale PR heads and upload errors fail loudly.
+Images under `new-screens/` are labeled as after-only evidence; other images are comparison strips.
 Serialize runs per PR; GitHub has no atomic description-edit operation.
 
 Develop: `npm ci && npm test`. On Macs with a global libvips, use

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { useTargetBaseline, restoreHead } from './baseline.mjs';
+import { useTargetBaseline, restoreHead, prepareNewScreenshots, discardNewScreenshots, copyNewScreenshots } from './baseline.mjs';
 
 const fixture = (run) => {
   const root = mkdtempSync(join(tmpdir(), 'visual-baseline-'));
@@ -53,4 +53,61 @@ test('refuses snapshot symlinks', () => fixture(({ head, target, backup }) => {
   writeFileSync(join(target, 'page.png'), 'target');
   symlinkSync(join(target, 'page.png'), join(head, 'page.png'));
   assert.throws(() => useTargetBaseline(head, target, backup), /symlink/);
+}));
+
+test('publishes only fresh new screenshots across reruns, preserving skipped baselines without evidence', () => fixture(({ root, head, target, backup }) => {
+  const out = join(root, 'evidence');
+  writeFileSync(join(head, 'chromium', 'existing.png'), 'changed existing screen');
+  writeFileSync(join(target, 'chromium', 'existing.png'), 'target screen');
+  writeFileSync(join(head, 'chromium', 'picker.png'), 'previous new screen');
+  writeFileSync(join(head, 'chromium', 'skipped.png'), 'skipped or removed test');
+  prepareNewScreenshots(head, target, backup);
+  assert.equal(existsSync(join(head, 'chromium', 'picker.png')), false);
+  writeFileSync(join(head, 'chromium', 'picker.png'), 'captured new screen');
+  const expected = ['chromium/picker.png'];
+  assert.deepEqual(copyNewScreenshots(head, target, out, backup), expected);
+  assert.equal(readFileSync(join(out, 'chromium', 'picker.png'), 'utf8'), 'captured new screen');
+  assert.equal(existsSync(join(out, 'chromium', 'existing.png')), false);
+  assert.equal(existsSync(join(out, 'chromium', 'skipped.png')), false);
+  assert.equal(readFileSync(join(head, 'chromium', 'skipped.png'), 'utf8'), 'skipped or removed test');
+  prepareNewScreenshots(head, target, backup);
+  writeFileSync(join(head, 'chromium', 'picker.png'), 'captured again');
+  assert.deepEqual(copyNewScreenshots(head, target, out, backup), expected);
+  assert.equal(readFileSync(join(out, 'chromium', 'picker.png'), 'utf8'), 'captured again');
+  writeFileSync(join(target, 'chromium', 'picker.png'), 'now on target');
+  prepareNewScreenshots(head, target, backup);
+  assert.deepEqual(copyNewScreenshots(head, target, join(root, 'next-run'), backup), []);
+}));
+
+test('publishes the first screens when the target has no baselines', () => fixture(({ root, head, target, backup }) => {
+  writeFileSync(join(head, 'chromium', 'first.png'), 'first screen');
+  const out = join(root, 'evidence');
+  assert.deepEqual(copyNewScreenshots(head, target, out, backup), ['chromium/first.png']);
+  assert.equal(readFileSync(join(out, 'chromium', 'first.png'), 'utf8'), 'first screen');
+}));
+
+test('creates empty evidence and restores baselines when every new screen is skipped', () => fixture(({ root, head, target, backup }) => {
+  writeFileSync(join(head, 'chromium', 'skipped.png'), 'previous screen');
+  prepareNewScreenshots(head, target, backup);
+  const out = join(root, 'evidence', 'new-screens');
+  assert.deepEqual(copyNewScreenshots(head, target, out, backup), []);
+  assert.equal(existsSync(out), true);
+  assert.equal(readFileSync(join(head, 'chromium', 'skipped.png'), 'utf8'), 'previous screen');
+}));
+
+test('discards comparison-created references and restores only original skipped baselines', () => fixture(({ root, head, target, backup }) => {
+  writeFileSync(join(head, 'skipped.png'), 'original baseline');
+  writeFileSync(join(head, 'existing.png'), 'original existing');
+  writeFileSync(join(target, 'existing.png'), 'target existing');
+  prepareNewScreenshots(head, target, backup);
+  const comparisonBackup = join(root, 'comparison-backup');
+  useTargetBaseline(head, target, comparisonBackup);
+  writeFileSync(join(head, 'skipped.png'), 'comparison reference');
+  writeFileSync(join(head, 'uncommitted.png'), 'comparison reference');
+  restoreHead(head, comparisonBackup);
+  discardNewScreenshots(head, target);
+  assert.equal(readFileSync(join(head, 'existing.png'), 'utf8'), 'original existing');
+  assert.deepEqual(copyNewScreenshots(head, target, join(root, 'evidence'), backup), []);
+  assert.equal(readFileSync(join(head, 'skipped.png'), 'utf8'), 'original baseline');
+  assert.equal(existsSync(join(head, 'uncommitted.png')), false);
 }));
