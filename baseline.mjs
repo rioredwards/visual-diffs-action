@@ -45,6 +45,7 @@ export function prepareNewScreenshots(head, target, backup) {
 
 // Publish fresh captures, then preserve skipped tests' baselines without publishing them.
 export function copyNewScreenshots(head, target, out, backup) {
+  mkdirSync(out, { recursive: true });
   const available = new Set(pngs(target));
   const added = pngs(head).filter(file => !available.has(file)).sort();
   for (const file of added) {

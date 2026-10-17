@@ -162,7 +162,7 @@ jobs:
           images: ${{ inputs.working-directory }}/visual-diffs
           token: ${{ secrets.upload-token }}
           allow-empty: 'true'
-          clear: ${{ steps.compare.outcome == 'success' && steps.new-screens.outputs.added == '0' }}
+          clear: ${{ (steps.compare.outcome == 'success' || steps.baseline.outputs.ready != 'true') && steps.new-screens.outputs.added == '0' }}
 
       - name: Commit updated screenshots
         uses: stefanzweifel/git-auto-commit-action@v7

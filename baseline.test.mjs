@@ -85,3 +85,12 @@ test('publishes the first screens when the target has no baselines', () => fixtu
   assert.deepEqual(copyNewScreenshots(head, target, out, backup), ['chromium/first.png']);
   assert.equal(readFileSync(join(out, 'chromium', 'first.png'), 'utf8'), 'first screen');
 }));
+
+test('creates empty evidence and restores baselines when every new screen is skipped', () => fixture(({ root, head, target, backup }) => {
+  writeFileSync(join(head, 'chromium', 'skipped.png'), 'previous screen');
+  prepareNewScreenshots(head, target, backup);
+  const out = join(root, 'evidence', 'new-screens');
+  assert.deepEqual(copyNewScreenshots(head, target, out, backup), []);
+  assert.equal(existsSync(out), true);
+  assert.equal(readFileSync(join(head, 'chromium', 'skipped.png'), 'utf8'), 'previous screen');
+}));
