@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import sharp from 'sharp';
 
 const script = new URL('./crop-diffs.mjs', import.meta.url);
-test('only changed images produce before/after/diff strips, including different heights', async () => {
+test('only changed images produce before/after/diff animations, including different heights', async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'visual-comparison-')));
   const run = () => execFileSync(process.execPath, [script.pathname, '--pad', '0'], { cwd: dir });
   try {
@@ -20,14 +20,17 @@ test('only changed images produce before/after/diff strips, including different 
     await png('screen-actual.png', 12, 'blue');
     await png('screen-diff.png', 12, 'red');
     run();
-    const result = await sharp(join(dir, 'visual-diffs', 'arbitrary-test-name', 'screen.png')).metadata();
+    const result = await sharp(join(dir, 'visual-diffs', 'arbitrary-test-name', 'screen.gif')).metadata();
     assert.equal(result.width, 12);
-    assert.equal(result.height, 12 * 3 + 32);
+    assert.equal(result.height, 12 + 36);
+    assert.equal(result.pages, 3);
+    assert.deepEqual(result.delay, [1000, 1000, 1000]);
+    assert.equal(result.loop, 0);
     // Playwright can produce an all-gray diff when no pixels exceed its threshold.
     await png('quiet-expected.png', 12, 'white');
     await png('quiet-actual.png', 12, 'white');
     await png('quiet-diff.png', 12, '#eeeeee');
     run();
-    assert.deepEqual(readdirSync(join(dir, 'visual-diffs', 'arbitrary-test-name')), ['screen.png']);
+    assert.deepEqual(readdirSync(join(dir, 'visual-diffs', 'arbitrary-test-name')), ['screen.gif']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

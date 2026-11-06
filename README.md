@@ -1,12 +1,16 @@
 # Visual diffs in PR descriptions
 
 Playwright compares a PR's UI screenshots against the **target branch's** committed baselines.
-Changed regions become before / after / diff strips, uploaded directly into the PR description
-with `gh --attach`. The evidence is cumulative: everything the PR changes versus its target, not
-just the last push. Identical strips skip re-upload. When the PR matches its target again, the
+Changed regions become Before / After / Diff animations, uploaded directly into the PR description
+with `gh --attach`. Each GIF loops Before, After, Diff at exactly one second per frame.
+The Diff frame highlights before pixels in red and after pixels in teal on dimmed context.
+Evidence retains the changed band plus padding, proportionally scaled to at most 1600 pixels
+wide and 2400 pixels of content height. Original capture PNGs stay untouched.
+GIFs exceeding the 10 MB upload limit fail with an error. The evidence is cumulative: everything the PR changes versus its target, not
+just the last push. Identical animations skip re-upload. When the PR matches its target again, the
 evidence section is removed. Screenshots the target lacks appear under **New screens (after
 only)**, including on reruns after the bot commits their baselines. Changed screens keep their
-before / after / diff strips. Evidence is published only after capture succeeds, then the PR's
+Before / After / Diff animations. Evidence is published only after capture succeeds, then the PR's
 baselines are committed to its branch. New screens skipped by the capture keep their baselines
 but are excluded from evidence.
 
@@ -53,7 +57,7 @@ The upload step installs checksum-verified gh 2.100.0 on Linux x64.
 The lower-level composite action accepts `images`, `token`, and optional `allow-empty` and `clear`.
 It recursively uploads PNG/JPEG/GIF/WebP (50 maximum, each ≤10 MB), rejects symlinks and unsafe
 paths, and preserves surrounding PR text. Stale PR heads and upload errors fail loudly.
-Images under `new-screens/` are labeled as after-only evidence; other images are comparison strips.
+Images under `new-screens/` are labeled as after-only evidence; other images are comparison animations.
 Serialize runs per PR; GitHub has no atomic description-edit operation.
 
 Develop: `npm ci && npm test`. On Macs with a global libvips, use
