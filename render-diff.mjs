@@ -25,9 +25,14 @@ export async function renderDiffGif({ before, after, diff, pad = 40 }) {
   const pixel = (source, x, y) => x < source.width && y < source.height
     ? source.data.subarray((y * source.width + x) * 4, (y * source.width + x) * 4 + 4) : Buffer.from([255, 255, 255, 255]);
   const changed = new Uint8Array(width * height), rawChanged = new Uint8Array(width * height);
+  const luminance = p => .2126 * p[0] + .7152 * p[1] + .0722 * p[2];
+  const histogram = new Uint32Array(256);
   let any = false, hasMask = false;
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const i = y * width + x, a = pixel(old, x, y), b = pixel(next, x, y), m = pixel(mask, x, y);
+    if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+      histogram[Math.round(luminance(a))]++; histogram[Math.round(luminance(b))]++;
+    }
     const dimensions = (x < old.width && y < old.height) !== (x < next.width && y < next.height);
     rawChanged[i] = Number(dimensions || !a.equals(b)); any ||= Boolean(rawChanged[i]);
     changed[i] = Number(m[0] > 200 && m[1] < 100); hasMask ||= Boolean(changed[i]);
@@ -43,7 +48,7 @@ export async function renderDiffGif({ before, after, diff, pad = 40 }) {
   top = Math.max(0, top - pad); bottom = Math.min(height - 1, bottom + pad);
   const cropHeight = bottom - top + 1;
   const buffers = [Buffer.alloc(width * cropHeight * 4), Buffer.alloc(width * cropHeight * 4), Buffer.alloc(width * cropHeight * 4)];
-  const luminance = p => .2126 * p[0] + .7152 * p[1] + .0722 * p[2];
+  const pageBackground = histogram.indexOf(Math.max(...histogram));
   for (let y = top; y <= bottom; y++) for (let x = 0; x < width; x++) {
     const a = pixel(old, x, y), b = pixel(next, x, y), offset = ((y - top) * width + x) * 4;
     a.copy(buffers[0], offset); b.copy(buffers[1], offset);
@@ -54,7 +59,11 @@ export async function renderDiffGif({ before, after, diff, pad = 40 }) {
     }
     neighbors.sort((a, b) => a - b);
     const background = (neighbors[3] + neighbors[4]) / 2;
-    const delta = Math.abs(luminance(a) - background) - Math.abs(luminance(b) - background);
+    let delta = Math.abs(luminance(a) - background) - Math.abs(luminance(b) - background);
+    // Large moved interiors can fill every local sample. Resolve that ambiguity
+    // against the page border's dominant brightness; truly equal-brightness changes keep both colors.
+    if (Math.abs(delta) < 4 && Math.abs(luminance(a) - luminance(b)) >= 4)
+      delta = Math.abs(luminance(a) - pageBackground) - Math.abs(luminance(b) - pageBackground);
     const context = Math.round((luminance(a) + luminance(b)) * .275 + 13);
     // Equal-brightness color changes retain both colors instead of disappearing.
     const color = changed[y * width + x] ? (Math.abs(delta) < 4 ? ((x + y) % 2 ? [255, 73, 70] : [0, 216, 170])

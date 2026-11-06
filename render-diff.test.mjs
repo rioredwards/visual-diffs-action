@@ -32,12 +32,12 @@ test('encoding rejects incomplete or mismatched frame sets', async () => {
   await assert.rejects(encodeFrames([await png('red'), await png('green', 21), await png('blue')]), /canvas/);
 });
 test('foreground moves keep Before red and After teal on light and dark backgrounds', async () => {
-  for (const [background, foreground] of [['white', 'black'], ['black', 'white']]) {
-    const square = await png(foreground, 2, 2);
-    const image = x => sharp({ create: { width: 32, height: 20, channels: 4, background } }).composite([{ input: square, left: x, top: 9 }]).png().toBuffer();
-    const gif = await renderDiffGif({ before: await image(6), after: await image(22), diff: await png('red', 32, 20), pad: 0 });
+  for (const [background, foreground] of [['white', 'black'], ['black', 'white']]) for (const size of [2, 20]) {
+    const square = await png(foreground, size, size);
+    const image = x => sharp({ create: { width: 80, height: 40, channels: 4, background } }).composite([{ input: square, left: x, top: 9 }]).png().toBuffer();
+    const gif = await renderDiffGif({ before: await image(6), after: await image(50), diff: await png('red', 80, 40), pad: 0 });
     const { data, info } = await sharp(gif, { page: 2 }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-    const old = pixel(data, info.width, 6, 45), next = pixel(data, info.width, 22, 45);
+    const old = pixel(data, info.width, 6 + Math.floor(size / 2), 45 + Math.floor(size / 2)), next = pixel(data, info.width, 50 + Math.floor(size / 2), 45 + Math.floor(size / 2));
     assert.ok(old[0] > old[1] + 80, `${background}: old foreground must be red`);
     assert.ok(next[1] > next[0] + 80, `${background}: new foreground must be teal`);
   }
